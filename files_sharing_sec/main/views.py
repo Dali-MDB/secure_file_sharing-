@@ -6,11 +6,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth.models import User
-from .models import UploadedFile
+from .models import UploadedFile,DownloadLink
 from django.utils import timezone
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
-
+from django.http import FileResponse
 
 @permission_classes([IsAuthenticated])
 @api_view(['POST'])
@@ -30,9 +30,22 @@ def upload_file(request):
 
 
 
-
+@api_view(['delete'])
 @permission_classes([IsAuthenticated])
+def delete_file(request,file_id:int):
+    #we fetch the file
+    file = get_object_or_404(UploadedFile,id=file_id)
+    #check permission
+    if not file.owner.id == request.user.id:
+        return Response('access denied, you are not the owner of this file',status=status.HTTP_401_UNAUTHORIZED)
+    file.file.delete(save=False)
+    file.delete()
+    return Response({'detail':'the file has been deleted successfully'},200)
+
+
+
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def generate_download_token(request,file_id:int):
     #we fetch the file
     file = get_object_or_404(UploadedFile,id=file_id)
@@ -54,3 +67,20 @@ def generate_download_token(request,file_id:int):
     return Response(down_ser.errors,400)
 
     
+@api_view(['GET'])
+def download_file(request):
+    token = request.GET.get('token',None)
+    if not token:
+        return Response({'detail':'No token was provided'},400)
+    #we fetch the download link
+    link = DownloadLink.objects.filter(token=token).first()
+    #validation
+    if not link or link.is_expired:
+        return Response({'detail':'this token has expired, ask the owner for a new one'},status.HTTP_410_GONE)
+    #at this level the token is valid
+    link.current_uses += 1
+    link.save()
+    file = link.file
+    file.last_visited = timezone.now()   #mark the last time visited
+    file.save()
+    return FileResponse(open(file.file.path,'rb'),as_attachment=True,filename=file.file.name)
