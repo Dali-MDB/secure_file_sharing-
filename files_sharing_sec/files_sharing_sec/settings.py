@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'main',
     'rest_framework',
     'rest_framework_simplejwt',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -147,3 +148,35 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': False,               # Blacklist old refresh tokens
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+
+
+# CELERY CONFIGURATION
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+
+
+#celery beat conf
+from celery.schedules import crontab
+
+
+CELERY_BEAT_SCHEDULE = {
+    'expired_tokens': {
+        'task': 'main.tasks.delete_expired_tokens',
+        'schedule': crontab(minute=0,hour='*/2'), 
+    },
+    'expired_files': {
+        'task': 'main.tasks.delete_expired_files',
+        'schedule': crontab(minute=0,hour=3), 
+    },
+    'orphaned_files': {
+        'task': 'main.tasks.cleanup_orphaned_files',
+        'schedule': crontab(day_of_month=1,hour=0,minute=0), 
+    }
+ 
+}
+CELERY_TIMEZONE = 'UTC'
